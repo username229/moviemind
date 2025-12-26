@@ -32,7 +32,7 @@ const allowlist = [
   "zod-validation-error",
 ];
 
-async function buildAll() {
+
 async function buildAll() {
   // 1. Limpa a pasta dist
   await rm("dist", { recursive: true, force: true });
