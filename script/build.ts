@@ -33,11 +33,18 @@ const allowlist = [
 ];
 
 async function buildAll() {
+async function buildAll() {
+  // 1. Limpa a pasta dist
   await rm("dist", { recursive: true, force: true });
 
   console.log("building client...");
-  await viteBuild();
-
+  // Forçamos o Vite a construir para 'dist/public'
+  await viteBuild({
+    build: {
+      outDir: "dist/public", // Isso resolve o erro do servidor não achar o diretório
+      emptyOutDir: false,    // Evita que o Vite apague o que o esbuild fizer
+    }
+  });
   console.log("building server...");
   const pkg = JSON.parse(await readFile("package.json", "utf-8"));
   const allDeps = [
