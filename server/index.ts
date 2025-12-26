@@ -1,5 +1,6 @@
 import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
+
 import { createServer } from "http";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
@@ -96,9 +97,9 @@ app.use((err: AppError, _req: Request, res: Response, _next: NextFunction) => {
     await setupVite(httpServer, app);
   }
 
-  const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen(
-    { port, host: "0.0.0.0", reusePort: true },
-    () => log(`Server running on port ${port}`)
-  );
+  const PORT = process.env.PORT || 10000;
+
+app.listen(Number(PORT), "0.0.0.0", () => {
+  console.log(`Server is running on port ${PORT}`);
+});
 })();
