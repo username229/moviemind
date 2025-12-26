@@ -12,7 +12,6 @@ export function serveStatic(app: Express) {
     );
   }
 
-  app.use(express.static(distPath));
 
   // fall through to index.html para suporte a Single Page Application (React Router)
   app.get("*", (_req, res) => {
