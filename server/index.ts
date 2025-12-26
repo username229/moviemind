@@ -87,19 +87,27 @@ app.use((err: AppError, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 // --- Main Async Bootstrap ---
+// --- Main Async Bootstrap ---
 (async () => {
-  await registerRoutes(httpServer, app); // suas rotas devem usar asyncHandler se forem async
+  try {
+    // 1. Inicia o servidor PRIMEIRO para o Render detectar a porta aberta
+    const PORT = process.env.PORT || 10000;
+    httpServer.listen(Number(PORT), "0.0.0.0", () => {
+      log(`Server is running on port ${PORT}`);
+    });
 
-  if (process.env.NODE_ENV === "production") {
-    serveStatic(app);
-  } else {
-    const { setupVite } = await import("./vite");
-    await setupVite(httpServer, app);
+    // 2. Depois registra as rotas e conexões pesadas
+    await registerRoutes(httpServer, app);
+
+    if (process.env.NODE_ENV === "production") {
+      serveStatic(app);
+    } else {
+      const { setupVite } = await import("./vite");
+      await setupVite(httpServer, app);
+    }
+  } catch (error) {
+    log(`Failed to start server: ${error}`, "error");
+    process.exit(1);
   }
-
-  const PORT = process.env.PORT || 10000;
-
-app.listen(Number(PORT), "0.0.0.0", () => {
-  console.log(`Server is running on port ${PORT}`);
-});
 })();
+
