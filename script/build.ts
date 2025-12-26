@@ -23,7 +23,7 @@ const allowlist = [
   "openai",
   "passport",
   "passport-local",
-  "pg",
+  //"pg",
   "stripe",
   "uuid",
   "ws",
