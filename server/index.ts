@@ -90,18 +90,15 @@ app.use((err: AppError, _req: Request, res: Response, _next: NextFunction) => {
 // --- Main Async Bootstrap ---
 (async () => {
   try {
-    // 1. Inicia o servidor PRIMEIRO para o Render detectar a porta aberta
     const PORT = process.env.PORT || 10000;
     httpServer.listen(Number(PORT), "0.0.0.0", () => {
       log(`Server is running on port ${PORT}`);
     });
 
-    // 2. Depois registra as rotas e conexões pesadas
     await registerRoutes(httpServer, app);
 
-    if (process.env.NODE_ENV === "production") {
-      serveStatic(app);
-    } else {
+    // ❌ NÃO servir frontend no backend em produção
+    if (process.env.NODE_ENV !== "production") {
       const { setupVite } = await import("./vite");
       await setupVite(httpServer, app);
     }
@@ -110,4 +107,5 @@ app.use((err: AppError, _req: Request, res: Response, _next: NextFunction) => {
     process.exit(1);
   }
 })();
+
 
