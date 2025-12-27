@@ -1,77 +1,26 @@
-import type { Express } from "express";
-import type { Server } from "http";
-import { storage } from "./storage";
-import { setupAuth } from "./auth";
+import express from "express";
+import http from "http";
+import path from "path";
+import { registerRoutes } from "./routes";
 
-export async function registerRoutes(
-  httpServer: Server,
-  app: Express,
-): Promise<Server> {
-  /* ===========================
-     AUTH
-  ============================ */
-  setupAuth(app);
+const app = express();
+const server = http.createServer(app);
 
-  /* ===========================
-     MOVIES
-  ============================ */
-  app.get("/api/movies", async (_req, res) => {
-    const movies = await storage.getMovies();
-    res.json(movies);
-  });
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
 
-  app.get("/api/movies/:id", async (req, res) => {
-    const movieId = Number(req.params.id);
-    const movie = await storage.getMovie(movieId);
+// 🔥 REGISTRA TODAS AS ROTAS /api 🔥
+await registerRoutes(server, app);
 
-    if (!movie) {
-      return res.status(404).json({ message: "Movie not found" });
-    }
+// 🔥 SERVE O FRONTEND BUILDADO 🔥
+const publicPath = path.resolve("dist/public");
+app.use(express.static(publicPath));
 
-    res.json(movie);
-  });
+app.get("*", (_req, res) => {
+  res.sendFile(path.join(publicPath, "index.html"));
+});
 
-  /* ===========================
-     RECOMMENDATIONS
-  ============================ */
-  app.get("/api/recommendations", async (_req, res) => {
-    const movies = await storage.getMovies();
-
-    const shuffled = [...movies].sort(() => 0.5 - Math.random());
-    res.json(shuffled.slice(0, 3));
-  });
-
-  /* ===========================
-     FAVORITES
-  ============================ */
-  app.get("/api/favorites", async (req, res) => {
-    if (!req.isAuthenticated()) {
-      return res.sendStatus(401);
-    }
-
-    // @ts-ignore
-    const userId = req.user.id;
-    const favorites = await storage.getFavorites(userId);
-    res.json(favorites);
-  });
-
-  app.post("/api/favorites/:movieId", async (req, res) => {
-    if (!req.isAuthenticated()) {
-      return res.sendStatus(401);
-    }
-
-    // @ts-ignore
-    const userId = req.user.id;
-    const movieId = Number(req.params.movieId);
-
-    const isFavorite = await storage.toggleFavorite(userId, movieId);
-    res.json({ isFavorite });
-  });
-
-  /* ===========================
-     SEED (executa uma vez)
-  ============================ */
-  await storage.seedMovies();
-
-  return httpServer;
-}
+const port = process.env.PORT || 3000;
+server.listen(port, () => {
+  console.log(`Server running on port ${port}`);
+});
