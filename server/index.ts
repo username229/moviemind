@@ -73,10 +73,7 @@ function asyncHandler(fn: (req: Request, res: Response, next: NextFunction) => P
   };
 }
 
-// --- 404 Handler ---
-app.use((_req, res) => {
-  res.status(404).json({ message: "Route not found" });
-});
+
 
 // --- Error Handler ---
 app.use((err: AppError, _req: Request, res: Response, _next: NextFunction) => {
