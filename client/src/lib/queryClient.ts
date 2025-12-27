@@ -1,8 +1,10 @@
-const API_URL = import.meta.env.VITE_API_URL;
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:10000";
 
 if (!API_URL) {
   throw new Error("VITE_API_URL is not defined");
 }
+
+console.log("🌐 API URL:", API_URL); // Log para debug
 
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
@@ -24,7 +26,9 @@ export async function apiRequest(
   url: string,
   data?: unknown,
 ): Promise<Response> {
-  const res = await fetch(`${API_URL}${url}`, {
+  const fullUrl = url.startsWith("http") ? url : `${API_URL}${url}`;
+  
+  const res = await fetch(fullUrl, {
     method,
     headers: data ? { "Content-Type": "application/json" } : {},
     body: data ? JSON.stringify(data) : undefined,
@@ -50,7 +54,9 @@ export const getQueryFn: <T>(options: {
       .join("/")
       .replace(/\/+/g, "/");
 
-    const url = path.startsWith("/")
+    const url = path.startsWith("http") 
+      ? path 
+      : path.startsWith("/")
       ? `${API_URL}${path}`
       : `${API_URL}/${path}`;
 
