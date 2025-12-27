@@ -71,10 +71,8 @@ app.use((req, res, next) => {
     // ✅ REGISTRA ROTAS API
     await registerRoutes(httpServer, app);
 
-    // ✅ SERVE FRONTEND EM PRODUÇÃO
-    if (process.env.NODE_ENV === "production") {
-      serveStatic(app);
-    } else {
+    // ❌ NÃO SERVE FRONTEND NO BACKEND
+    if (process.env.NODE_ENV !== "production") {
       const { setupVite } = await import("./vite");
       await setupVite(httpServer, app);
     }
