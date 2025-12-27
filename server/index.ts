@@ -28,9 +28,10 @@ const httpServer = createServer(app);
    CORS (PRIMEIRO DE TUDO)
 =========================== */
 const allowedOrigins = [
-  "https://moviemind-g2uj.onrender.com",       // possível variação
+  "https://moviemind-g2uj.onrender.com",  // static site
+  "https://moviemindd.onrender.com",       // possível variação
   "http://localhost:5173",                  // dev local
-  "http://localhost:10000",                  // dev local backend
+  "http://localhost:5000",                  // dev local backend
 ];
 
 app.use(
@@ -42,7 +43,7 @@ app.use(
       if (allowedOrigins.indexOf(origin) !== -1) {
         callback(null, true);
       } else {
-        console.log('❌ CORS blocked origin:', origin);
+        console.log('CORS blocked origin:', origin);
         callback(null, false);
       }
     },
@@ -103,10 +104,10 @@ app.use((req, res, next) => {
   try {
     const PORT = Number(process.env.PORT) || 10000;
 
-    // ✅ REGISTRA ROTAS API
+    // Registra rotas API
     await registerRoutes(httpServer, app);
 
-    // ❌ NÃO servir frontend no backend em produção
+    // Não servir frontend no backend em produção
     if (process.env.NODE_ENV !== "production") {
       const { setupVite } = await import("./vite");
       await setupVite(httpServer, app);
@@ -117,12 +118,12 @@ app.use((req, res, next) => {
       res.json({ status: "ok", timestamp: new Date().toISOString() });
     });
 
-    // ✅ 404 (DEPOIS DAS ROTAS)
+    // 404 (depois das rotas)
     app.use((_req, res) => {
       res.status(404).json({ message: "Route not found" });
     });
 
-    // ✅ ERROR HANDLER (ÚLTIMO)
+    // Error handler (último)
     app.use((err: AppError, _req: Request, res: Response, _next: NextFunction) => {
       const status = err.status || err.statusCode || 500;
       const message = err.message || "Internal Server Error";
@@ -132,8 +133,8 @@ app.use((req, res, next) => {
 
     httpServer.listen(PORT, "0.0.0.0", () => {
       log(`Server running on port ${PORT}`);
-      log(` Environment: ${process.env.NODE_ENV || 'development'}`);
-      log(` Allowed origins: ${allowedOrigins.join(', ')}`);
+      log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+      log(`Allowed origins: ${allowedOrigins.join(', ')}`);
     });
   } catch (err) {
     log(`Failed to start server: ${err}`, "error");

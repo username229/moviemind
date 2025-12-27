@@ -1,149 +1,108 @@
-import "dotenv/config";
-import express, { Request, Response, NextFunction } from "express";
-import { createServer } from "http";
-import cors from "cors";
-import path from "path";
-import { fileURLToPath } from "url";
-import { registerRoutes } from "./routes";
+import { build as esbuild } from "esbuild";
+import { build as viteBuild } from "vite";
+import { rm, readFile, mkdir } from "fs/promises";
+import { existsSync } from "fs";
 
-/* ===========================
-   TYPES
-=========================== */
-declare module "http" {
-  interface IncomingMessage {
-    rawBody: unknown;
-  }
-}
-
-interface AppError extends Error {
-  status?: number;
-  statusCode?: number;
-}
-
-/* ===========================
-   APP SETUP
-=========================== */
-const app = express();
-const httpServer = createServer(app);
-
-// Para ESM modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-/* ===========================
-   CORS
-=========================== */
-const allowedOrigins = [
-  "https://moviemind-g2uj.onrender.com",
-  "http://localhost:5173",
-  "http://localhost:5000",
+// server deps to bundle to reduce openat(2) syscalls
+// which helps cold start times
+const allowlist = [
+  "@google/generative-ai",
+  "axios",
+  "connect-pg-simple",
+  "cors",
+  "date-fns",
+  "drizzle-orm",
+  "drizzle-zod",
+  "express",
+  "express-rate-limit",
+  "express-session",
+  "jsonwebtoken",
+  "memorystore",
+  "multer",
+  "nanoid",
+  "nodemailer",
+  "openai",
+  "passport",
+  "passport-local",
+  "stripe",
+  "uuid",
+  "ws",
+  "xlsx",
+  "zod",
+  "zod-validation-error",
 ];
 
-app.use(
-  cors({
-    origin: function(origin, callback) {
-      if (!origin) return callback(null, true);
-      
-      if (allowedOrigins.indexOf(origin) !== -1) {
-        callback(null, true);
-      } else {
-        console.log('CORS blocked origin:', origin);
-        callback(null, false);
+async function buildAll() {
+  try {
+    // 1. Limpa a pasta dist
+    console.log("Cleaning dist directory...");
+    await rm("dist", { recursive: true, force: true });
+
+    // 2. Cria as pastas necessárias
+    console.log("Creating dist directories...");
+    await mkdir("dist", { recursive: true });
+    await mkdir("dist/public", { recursive: true });
+
+    // 3. Build do client
+    console.log("Building client...");
+    await viteBuild({
+      build: {
+        outDir: "dist/public",
+        emptyOutDir: false,
       }
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-  }),
-);
+    });
 
-app.options('*', cors());
+    // 4. Verifica se o build do client funcionou
+    if (!existsSync("dist/public/index.html")) {
+      throw new Error("Client build failed - index.html not found in dist/public");
+    }
+    console.log("Client built successfully");
 
-/* ===========================
-   MIDDLEWARES
-=========================== */
-app.use(
-  express.json({
-    verify: (req, _res, buf) => {
-      req.rawBody = buf;
-    },
-  }),
-);
-app.use(express.urlencoded({ extended: false }));
+    // 5. Build do server
+    console.log("Building server...");
+    const pkg = JSON.parse(await readFile("package.json", "utf-8"));
+    const allDeps = [
+      ...Object.keys(pkg.dependencies || {}),
+      ...Object.keys(pkg.devDependencies || {}),
+    ];
+    const externals = allDeps.filter((dep) => !allowlist.includes(dep));
 
-/* ===========================
-   LOGGER
-=========================== */
-export function log(message: string, source = "express") {
-  const time = new Date().toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
-  console.log(`${time} [${source}] ${message}`);
+    await esbuild({
+      entryPoints: ["server/index.ts"],
+      platform: "node",
+      bundle: true,
+      format: "cjs",
+      outfile: "dist/index.cjs",
+      define: {
+        "process.env.NODE_ENV": '"production"',
+      },
+      minify: true,
+      external: externals,
+      logLevel: "info",
+    });
+
+    // 6. Verifica se o build do server funcionou
+    if (!existsSync("dist/index.cjs")) {
+      throw new Error("Server build failed - index.cjs not found in dist");
+    }
+    console.log("Server built successfully");
+    
+    // 7. Resumo final
+    console.log("\nBuild completed successfully!");
+    console.log("  dist/");
+    console.log("    ├── public/        (frontend - static site)");
+    console.log("    │   ├── index.html");
+    console.log("    │   └── assets/");
+    console.log("    └── index.cjs      (backend - web service)");
+    console.log("");
+    
+  } catch (err) {
+    console.error("Build failed:", err);
+    throw err;
+  }
 }
 
-app.use((req, res, next) => {
-  const start = Date.now();
-  const path = req.path;
-
-  res.on("finish", () => {
-    if (path.startsWith("/api")) {
-      log(`${req.method} ${path} ${res.statusCode} in ${Date.now() - start}ms`);
-    }
-  });
-
-  next();
+buildAll().catch((err) => {
+  console.error(err);
+  process.exit(1);
 });
-
-/* ===========================
-   BOOTSTRAP
-=========================== */
-(async () => {
-  try {
-    const PORT = Number(process.env.PORT) || 10000;
-
-    // ✅ REGISTRA ROTAS API (ANTES dos arquivos estáticos)
-    await registerRoutes(httpServer, app);
-
-    // Health check
-    app.get("/health", (_req, res) => {
-      res.json({ status: "ok", timestamp: new Date().toISOString() });
-    });
-
-    // ✅ SERVIR ARQUIVOS ESTÁTICOS EM PRODUÇÃO
-    if (process.env.NODE_ENV === "production") {
-      const publicPath = path.join(__dirname, "public");
-      log(`📁 Serving static files from: ${publicPath}`);
-      
-      app.use(express.static(publicPath));
-      
-      // SPA fallback - todas as rotas não-API retornam index.html
-      app.get("*", (_req, res) => {
-        res.sendFile(path.join(publicPath, "index.html"));
-      });
-    } else {
-      // ✅ DEV: Usar Vite
-      const { setupVite } = await import("./vite");
-      await setupVite(httpServer, app);
-    }
-
-    // ✅ ERROR HANDLER (ÚLTIMO)
-    app.use((err: AppError, _req: Request, res: Response, _next: NextFunction) => {
-      const status = err.status || err.statusCode || 500;
-      const message = err.message || "Internal Server Error";
-      log(`Error: ${message}`, "error");
-      res.status(status).json({ message });
-    });
-
-    httpServer.listen(PORT, "0.0.0.0", () => {
-      log(`Server running on port ${PORT}`);
-      log(` Environment: ${process.env.NODE_ENV || 'development'}`);
-      log(`Allowed origins: ${allowedOrigins.join(', ')}`);
-    });
-  } catch (err) {
-    log(`Failed to start server: ${err}`, "error");
-    process.exit(1);
-  }
-})();
