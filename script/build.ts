@@ -1,74 +1,149 @@
-import { build as esbuild } from "esbuild";
-import { build as viteBuild } from "vite";
-import { rm, readFile } from "fs/promises";
+import "dotenv/config";
+import express, { Request, Response, NextFunction } from "express";
+import { createServer } from "http";
+import cors from "cors";
+import path from "path";
+import { fileURLToPath } from "url";
+import { registerRoutes } from "./routes";
 
-// server deps to bundle to reduce openat(2) syscalls
-// which helps cold start times
-const allowlist = [
-  "@google/generative-ai",
-  "axios",
-  "connect-pg-simple",
-  "cors",
-  "date-fns",
-  "drizzle-orm",
-  "drizzle-zod",
-  "express",
-  "express-rate-limit",
-  "express-session",
-  "jsonwebtoken",
-  "memorystore",
-  "multer",
-  "nanoid",
-  "nodemailer",
-  "openai",
-  "passport",
-  "passport-local",
-  //"pg",
-  "stripe",
-  "uuid",
-  "ws",
-  "xlsx",
-  "zod",
-  "zod-validation-error",
-];
-
-
-async function buildAll() {
-  // 1. Limpa a pasta dist
-  await rm("dist", { recursive: true, force: true });
-
-  console.log("building client...");
-  // Forçamos o Vite a construir para 'dist/public'
-  await viteBuild({
-    build: {
-      outDir: "dist/public", // Isso resolve o erro do servidor não achar o diretório
-      emptyOutDir: false,    // Evita que o Vite apague o que o esbuild fizer
-    }
-  });
-  console.log("building server...");
-  const pkg = JSON.parse(await readFile("package.json", "utf-8"));
-  const allDeps = [
-    ...Object.keys(pkg.dependencies || {}),
-    ...Object.keys(pkg.devDependencies || {}),
-  ];
-  const externals = allDeps.filter((dep) => !allowlist.includes(dep));
-
-  await esbuild({
-    entryPoints: ["server/index.ts"],
-    platform: "node",
-    bundle: true,
-    format: "cjs",
-    outfile: "dist/index.cjs",
-    define: {
-      "process.env.NODE_ENV": '"production"',
-    },
-    minify: true,
-    external: externals,
-    logLevel: "info",
-  });
+/* ===========================
+   TYPES
+=========================== */
+declare module "http" {
+  interface IncomingMessage {
+    rawBody: unknown;
+  }
 }
 
-buildAll().catch((err) => {
-  console.error(err);
-  process.exit(1);
+interface AppError extends Error {
+  status?: number;
+  statusCode?: number;
+}
+
+/* ===========================
+   APP SETUP
+=========================== */
+const app = express();
+const httpServer = createServer(app);
+
+// Para ESM modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+/* ===========================
+   CORS
+=========================== */
+const allowedOrigins = [
+  "https://moviemind-g2uj.onrender.com",
+  "http://localhost:5173",
+  "http://localhost:5000",
+];
+
+app.use(
+  cors({
+    origin: function(origin, callback) {
+      if (!origin) return callback(null, true);
+      
+      if (allowedOrigins.indexOf(origin) !== -1) {
+        callback(null, true);
+      } else {
+        console.log('CORS blocked origin:', origin);
+        callback(null, false);
+      }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  }),
+);
+
+app.options('*', cors());
+
+/* ===========================
+   MIDDLEWARES
+=========================== */
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      req.rawBody = buf;
+    },
+  }),
+);
+app.use(express.urlencoded({ extended: false }));
+
+/* ===========================
+   LOGGER
+=========================== */
+export function log(message: string, source = "express") {
+  const time = new Date().toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
+  console.log(`${time} [${source}] ${message}`);
+}
+
+app.use((req, res, next) => {
+  const start = Date.now();
+  const path = req.path;
+
+  res.on("finish", () => {
+    if (path.startsWith("/api")) {
+      log(`${req.method} ${path} ${res.statusCode} in ${Date.now() - start}ms`);
+    }
+  });
+
+  next();
 });
+
+/* ===========================
+   BOOTSTRAP
+=========================== */
+(async () => {
+  try {
+    const PORT = Number(process.env.PORT) || 10000;
+
+    // ✅ REGISTRA ROTAS API (ANTES dos arquivos estáticos)
+    await registerRoutes(httpServer, app);
+
+    // Health check
+    app.get("/health", (_req, res) => {
+      res.json({ status: "ok", timestamp: new Date().toISOString() });
+    });
+
+    // ✅ SERVIR ARQUIVOS ESTÁTICOS EM PRODUÇÃO
+    if (process.env.NODE_ENV === "production") {
+      const publicPath = path.join(__dirname, "public");
+      log(`📁 Serving static files from: ${publicPath}`);
+      
+      app.use(express.static(publicPath));
+      
+      // SPA fallback - todas as rotas não-API retornam index.html
+      app.get("*", (_req, res) => {
+        res.sendFile(path.join(publicPath, "index.html"));
+      });
+    } else {
+      // ✅ DEV: Usar Vite
+      const { setupVite } = await import("./vite");
+      await setupVite(httpServer, app);
+    }
+
+    // ✅ ERROR HANDLER (ÚLTIMO)
+    app.use((err: AppError, _req: Request, res: Response, _next: NextFunction) => {
+      const status = err.status || err.statusCode || 500;
+      const message = err.message || "Internal Server Error";
+      log(`Error: ${message}`, "error");
+      res.status(status).json({ message });
+    });
+
+    httpServer.listen(PORT, "0.0.0.0", () => {
+      log(`Server running on port ${PORT}`);
+      log(` Environment: ${process.env.NODE_ENV || 'development'}`);
+      log(`Allowed origins: ${allowedOrigins.join(', ')}`);
+    });
+  } catch (err) {
+    log(`Failed to start server: ${err}`, "error");
+    process.exit(1);
+  }
+})();

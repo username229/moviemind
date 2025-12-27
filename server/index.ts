@@ -28,8 +28,7 @@ const httpServer = createServer(app);
    CORS (PRIMEIRO DE TUDO)
 =========================== */
 const allowedOrigins = [
-  "https://moviemind-g2uj.onrender.com",  // static site
-  "https://moviemindd.onrender.com",       // possível variação
+  "https://moviemind-g2uj.onrender.com",       // possível variação
   "http://localhost:5173",                  // dev local
   "http://localhost:10000",                  // dev local backend
 ];
