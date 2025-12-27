@@ -18,40 +18,34 @@ interface AppError extends Error {
   statusCode?: number;
 }
 
-/* ===========================
-   APP SETUP
-=========================== */
+
 const app = express();
 const httpServer = createServer(app);
 
-/* ===========================
-   CORS (PRIMEIRO DE TUDO)
-=========================== */
+
 const allowedOrigins = [
-  "https://moviemind-g2uj.onrender.com",  // static site
-  "https://moviemindd.onrender.com",       // possível variação
-  "http://localhost:5173",                  // dev local
-  "http://localhost:5000",                  // dev local backend
+  "http://localhost:5173",
+  "http://localhost:5000",
 ];
 
 app.use(
   cors({
-    origin: function(origin, callback) {
-      // Permitir requests sem origin (mobile apps, etc.)
+    origin: (origin, callback) => {
       if (!origin) return callback(null, true);
-      
-      if (allowedOrigins.indexOf(origin) !== -1) {
-        callback(null, true);
-      } else {
-        console.log('CORS blocked origin:', origin);
-        callback(null, false);
+
+      if (
+        process.env.NODE_ENV === "production" ||
+        allowedOrigins.includes(origin)
+      ) {
+        return callback(null, true);
       }
+
+      callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
   }),
 );
+
 
 // Preflight requests
 app.options('*', cors());
