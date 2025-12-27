@@ -2,6 +2,7 @@ import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import { createServer } from "http";
 import { registerRoutes } from "./routes";
+import cors from "cors";
 
 /* ===========================
    TYPES
@@ -97,4 +98,17 @@ app.use((req, res, next) => {
     log(`Failed to start server: ${err}`, "error");
     process.exit(1);
   }
+
+  
+
+app.use(
+  cors({
+    origin: [
+      "https://moviemind-g2uj.onrender.com",
+      "http://localhost:5173",
+    ],
+    credentials: true,
+  }),
+);
+
 })();
