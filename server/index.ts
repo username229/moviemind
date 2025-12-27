@@ -1,8 +1,8 @@
 import "dotenv/config";
-import express, { type Request, Response, NextFunction } from "express";
+import express, { Request, Response, NextFunction } from "express";
 import { createServer } from "http";
-import { registerRoutes } from "./routes";
 import cors from "cors";
+import { registerRoutes } from "./routes";
 
 /* ===========================
    TYPES
@@ -23,6 +23,19 @@ interface AppError extends Error {
 =========================== */
 const app = express();
 const httpServer = createServer(app);
+
+/* ===========================
+   CORS (PRIMEIRO DE TUDO)
+=========================== */
+app.use(
+  cors({
+    origin: [
+      "https://moviemind-g2uj.onrender.com", // static site
+      "http://localhost:5173",
+    ],
+    credentials: true,
+  }),
+);
 
 /* ===========================
    MIDDLEWARES
@@ -72,13 +85,13 @@ app.use((req, res, next) => {
     // ✅ REGISTRA ROTAS API
     await registerRoutes(httpServer, app);
 
-    // ❌ NÃO SERVE FRONTEND NO BACKEND
+    // ❌ NÃO servir frontend no backend em produção
     if (process.env.NODE_ENV !== "production") {
       const { setupVite } = await import("./vite");
       await setupVite(httpServer, app);
     }
 
-    // ✅ 404 (APÓS ROTAS)
+    // ✅ 404 (DEPOIS DAS ROTAS)
     app.use((_req, res) => {
       res.status(404).json({ message: "Route not found" });
     });
@@ -98,17 +111,4 @@ app.use((req, res, next) => {
     log(`Failed to start server: ${err}`, "error");
     process.exit(1);
   }
-
-  
-
-app.use(
-  cors({
-    origin: [
-      "https://moviemind-g2uj.onrender.com",
-      "http://localhost:5173",
-    ],
-    credentials: true,
-  }),
-);
-
 })();
